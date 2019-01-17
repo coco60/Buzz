@@ -353,7 +353,7 @@ int match(buzzparser_t par,
       return PARSE_ERROR;
    }
    else{
-     // dumpTok(par->tok);
+     // dumpTok(&ASTExtr, par->tok);
      return PARSE_OK;
    }
 }

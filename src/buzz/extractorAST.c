@@ -55,13 +55,13 @@ void visit_end(int nodeId, char* nodeType){
 
 void visitTok(int parentId, int childId, buzztok_t tk) {
 
-    printf("ast_edge %d %d", parentId, childId);
+    printf("ast_edge %d %d\n", parentId, childId);
 
-    printf("node_type %d token", childId);
-    printf("tk_type %d %d", childId, tk->type);
-    printf("literal %d %s", childId, tk->value);
-    printf("line_begin %d %llu", childId, tk->line);
-    printf("column_begin %d %llu", childId, tk->col);
+    printf("node_type %d token\n", childId);
+    printf("tk_type %d %d\n", childId, tk->type);
+    printf("literal %d %s\n", childId, tk->value);
+    printf("line_begin %d %llu\n", childId, tk->line);
+    printf("column_begin %d %llu\n", childId, tk->col);
     // don't print file name (for the moment)
     //printf("file_name %d %s", childId, tk->fname);
   }
