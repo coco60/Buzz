@@ -35,10 +35,11 @@ install(DIRECTORY . DESTINATION include/buzz FILES_MATCHING PATTERN "*.h")
 # Buzz debugging library
 #
 add_library(buzzdbg SHARED
-  buzzasm.h buzzasm.c 
+  buzzasm.h buzzasm.c
   buzzdebug.h buzzdebug.c)
 target_link_libraries(buzzdbg buzz)
 install(TARGETS buzzdbg LIBRARY DESTINATION lib)
+
 
 #
 # Compile bzzasm
@@ -57,7 +58,7 @@ install(TARGETS bzzdeasm RUNTIME DESTINATION bin)
 #
 # Compile bzzparse
 #
-add_executable(bzzparse buzzlex.h buzzlex.c buzzparser.h buzzparser.c buzzparse.c)
+add_executable(bzzparse buzzparser.c extractorAST.c Pile.c buzzlex.c buzzparse.c)
 target_link_libraries(bzzparse buzz)
 install(TARGETS bzzparse RUNTIME DESTINATION bin)
 

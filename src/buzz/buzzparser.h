@@ -5,11 +5,13 @@
 #define _GNU_SOURCE
 #endif
 
-//test
+
 #include <buzz/buzzlex.h>
 #include <buzz/buzzdarray.h>
 #include <buzz/buzzdict.h>
+#include "extractorAST.h"
 #include <stdio.h>
+
 
 #ifdef __cplusplus
 extern "C" {

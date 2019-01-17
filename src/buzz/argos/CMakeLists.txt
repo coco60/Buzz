@@ -2,6 +2,8 @@
 # Compile libbuzzargos
 #
 set(ARGOS_BUZZ_SOURCES
+  ../Pile.h                 ../Pile.c
+  ../extractorAST.h         ../extractorAST.c
   ../buzzlex.h              ../buzzlex.c
   ../buzzparser.h           ../buzzparser.c
   ../buzzasm.h              ../buzzasm.c
@@ -37,4 +39,3 @@ endif(ARGOS_COMPILE_QTOPENGL)
 
 install(TARGETS argos3plugin_simulator_buzz LIBRARY DESTINATION ${ARGOS_PREFIX}/lib/argos3)
 install(DIRECTORY . DESTINATION include/buzz/argos FILES_MATCHING PATTERN "*.h")
-

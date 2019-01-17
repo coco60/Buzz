@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <inttypes.h>
 
+static ASTExtractor ASTExtr;
+
 /****************************************/
 /****************************************/
 
@@ -29,7 +31,7 @@ static int SCOPE_AUTO     =  2;
 /*
  * At the end of parsing, the strings are output in the bytecode
  * file. The writing occurs in order, where the order is dictated by
- * the increasing string pos field. 
+ * the increasing string pos field.
  * To achieve this, the contents of the string dictionary are copied
  * to an array, which is later sorted.
  */
@@ -39,6 +41,7 @@ struct strarray_data_s {
 };
 
 void string_copy(const void* key, void* data, void* params) {
+
    struct strarray_data_s* x = (struct strarray_data_s*)malloc(sizeof(struct strarray_data_s));
    x->str = *(char**)key;
    x->pos = *(uint16_t*)data;
@@ -349,7 +352,10 @@ int match(buzzparser_t par,
               buzztok_desc[par->tok->type]);
       return PARSE_ERROR;
    }
-   else return PARSE_OK;
+   else{
+     // dumpTok(par->tok);
+     return PARSE_OK;
+   }
 }
 
 #define tokmatch(tok) if(!match(par, tok)) return PARSE_ERROR;
@@ -475,9 +481,15 @@ void buzzparser_symdel(uint32_t pos, void* data, void* params) {
 }
 
 int parse_block(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"BLOCK");
+
    tokmatch(BUZZTOK_BLOCKOPEN);
    fetchtok();
    if(par->tok->type == BUZZTOK_BLOCKCLOSE) {
+      /* Generate node of AST (END) */
+      ASTExtr.epilogue(&ASTExtr,"BLOCK");
+
       fetchtok();
       return PARSE_OK;
    }
@@ -487,6 +499,8 @@ int parse_block(buzzparser_t par) {
       if(parse_statlist(par)) {
          tokmatch(BUZZTOK_BLOCKCLOSE);
          fetchtok();
+         /* Generate node of AST (END) */
+         ASTExtr.epilogue(&ASTExtr,"BLOCK");
          /* Remove the variables defined in this block */
          struct symdeldata_s symdeldata = {
             .dellist = buzzdarray_new(1, sizeof(char*), NULL),
@@ -522,6 +536,9 @@ int parse_blockstat(buzzparser_t par) {
 /****************************************/
 
 int parse_var(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"VAR");
+
    /* Match the 'var' token */
    tokmatch(BUZZTOK_VAR);
    fetchtok();
@@ -573,10 +590,16 @@ int parse_var(buzzparser_t par) {
       /* The lvalue is a local variable */
       chunk_append("\tlstore %" PRId64, s->pos);
    }
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"VAR");
+
    return PARSE_OK;
 }
 
 int parse_fun(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"FUNCTION");
+
    tokmatch(BUZZTOK_FUN);
    fetchtok();
    tokmatch(BUZZTOK_ID);
@@ -618,10 +641,17 @@ int parse_fun(buzzparser_t par) {
    /* Get rid of symbol table and close chunk */
    symt_pop();
    chunk_pop();
+
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"FUNCTION");
+
    return PARSE_OK;
 }
 
 int parse_if(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"IF");
+
    /* Save labels for else branch and for if end */
    uint32_t lab1 = par->labels;
    uint32_t lab2 = par->labels + 1;
@@ -659,6 +689,9 @@ int parse_if(buzzparser_t par) {
       /* Mark the if end as label 1 */
       chunk_append(LABELREF "%u", lab1);
    }
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"IF");
+
    return PARSE_OK;
 }
 
@@ -668,7 +701,7 @@ int parse_if(buzzparser_t par) {
 int parse_for(buzzparser_t par) {
    /*
     * for(init, cond, update) body
-    * 
+    *
     *          <init>
     * Lcond:   <cond>
     *          jumpnz Lbody
@@ -680,6 +713,10 @@ int parse_for(buzzparser_t par) {
     * Lend:    ...
     */
    /* Save labels */
+
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"FOR");
+
    uint32_t lcond   = par->labels;
    uint32_t lupdate = lcond + 1;
    uint32_t lbody   = lupdate + 1;
@@ -722,6 +759,10 @@ int parse_for(buzzparser_t par) {
    chunk_append("\tjump " LABELREF "%u", lupdate);
    /* Place end label */
    chunk_append(LABELREF "%u", lend);
+
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"FOR");
+
    return PARSE_OK;
 }
 
@@ -729,6 +770,9 @@ int parse_for(buzzparser_t par) {
 /****************************************/
 
 int parse_while(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"WHILE");
+
    /* Save labels for while start and end */
    uint32_t wstart = par->labels;
    uint32_t wend = par->labels + 1;
@@ -754,6 +798,10 @@ int parse_while(buzzparser_t par) {
    chunk_append("\tjump " LABELREF "%u", wstart);
    /* Place while end label */
    chunk_append(LABELREF "%u", wend);
+
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"WHILE");
+
    return PARSE_OK;
 }
 
@@ -762,9 +810,18 @@ int parse_while(buzzparser_t par) {
 
 int parse_conditionlist(buzzparser_t par,
                         int* numargs) {
+
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"CONDITION_LIST");
+
    while(par->tok->type == BUZZTOK_STATEND) { fetchtok(); }
    *numargs = 0;
-   if(par->tok->type == BUZZTOK_PARCLOSE) return PARSE_OK;
+   if(par->tok->type == BUZZTOK_PARCLOSE){
+     /* Generate node of AST (END) */
+     ASTExtr.epilogue(&ASTExtr,"CONDITION_LIST");
+
+     return PARSE_OK;
+   }
    if(!parse_condition(par)) return PARSE_ERROR;
    ++(*numargs);
    while(par->tok->type == BUZZTOK_STATEND) { fetchtok(); }
@@ -775,14 +832,25 @@ int parse_conditionlist(buzzparser_t par,
       ++(*numargs);
       while(par->tok->type == BUZZTOK_STATEND) { fetchtok(); }
    }
+
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"CONDITION_LIST");
+
    return PARSE_OK;
 }
 
 int parse_condition(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"CONDITION");
+
    if(par->tok->type == BUZZTOK_LNOT) {
       fetchtok();
       if(!parse_condition(par)) return PARSE_ERROR;
       chunk_append("\tlnot");
+
+      /* Generate node of AST (END) */
+      ASTExtr.epilogue(&ASTExtr,"CONDITION");
+
       return PARSE_OK;
    }
    if(!parse_comparison(par)) return PARSE_ERROR;
@@ -794,10 +862,17 @@ int parse_condition(buzzparser_t par) {
       if(!parse_comparison(par)) return PARSE_ERROR;
       chunk_append("\t%s", op);
    }
+
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"CONDITION");
+
    return PARSE_OK;
 }
 
 int parse_comparison(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"COMPARISON");
+
    if(!parse_expression(par)) return PARSE_ERROR;
    if(par->tok->type == BUZZTOK_CMP) {
       char op[4];
@@ -811,6 +886,10 @@ int parse_comparison(buzzparser_t par) {
       if(!parse_expression(par)) return PARSE_ERROR;
       chunk_append("\t%s", op);
    }
+
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"COMPARISON");
+
    return PARSE_OK;
 }
 
@@ -818,6 +897,9 @@ int parse_comparison(buzzparser_t par) {
 /****************************************/
 
 int parse_expression(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"EXPRESSION");
+
    if(par->tok->type == BUZZTOK_BLOCKOPEN) {
       /* Table definition */
       /* Consume the { */
@@ -916,6 +998,10 @@ int parse_expression(buzzparser_t par) {
       }
       tokmatch(BUZZTOK_BLOCKCLOSE);
       fetchtok();
+
+      /* Generate node of AST (END) */
+      ASTExtr.epilogue(&ASTExtr,"EXPRESSION");
+
       return PARSE_OK;
    }
    if(!parse_product(par)) return PARSE_ERROR;
@@ -926,10 +1012,17 @@ int parse_expression(buzzparser_t par) {
       if     (op == '+') { chunk_append("\tadd"); }
       else if(op == '-') { chunk_append("\tsub"); }
    }
+
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"EXPRESSION");
+
    return PARSE_OK;
 }
 
 int parse_product(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"PRODUCT");
+
    if(!parse_modulo(par)) return PARSE_ERROR;
    while(par->tok->type == BUZZTOK_MULDIV) {
       char op = par->tok->value[0];
@@ -942,16 +1035,25 @@ int parse_product(buzzparser_t par) {
          chunk_append("\tdiv");
       }
    }
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"PRODUCT");
+
    return PARSE_OK;
 }
 
 int parse_modulo(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"MODULO");
+
    if(!parse_power(par)) return PARSE_ERROR;
    while(par->tok->type == BUZZTOK_MOD) {
       fetchtok();
       if(!parse_power(par)) return PARSE_ERROR;
       chunk_append("\tmod");
    }
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"MODULO");
+
    return PARSE_OK;
 }
 
@@ -960,15 +1062,23 @@ int parse_power(buzzparser_t par) {
 }
 
 int parse_powerrest(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"POW");
+
    if(par->tok->type == BUZZTOK_POW) {
       fetchtok();
       if(!parse_power(par)) return PARSE_ERROR;
       chunk_append("\tpow");
    }
+
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"POW");
+
    return PARSE_OK;
 }
 
 int parse_bitshift(buzzparser_t par) {
+
    if(!parse_bitwiseandor(par)) return PARSE_ERROR;
    while(par->tok->type == BUZZTOK_LRSHIFT) {
       char op[3];
@@ -976,9 +1086,21 @@ int parse_bitshift(buzzparser_t par) {
       op[2] = 0;
       fetchtok();
       if(!parse_bitwiseandor(par)) return PARSE_ERROR;
-      if(strcmp(op, "<<") == 0) { chunk_append("\tlshift"); }
-      else if(strcmp(op, ">>") == 0) { chunk_append("\trshift"); }
+      if(strcmp(op, "<<") == 0) {
+        /* Generate node of AST (BEGIN) */
+        // ASTExtr.prologue(&ASTExtr,"BITSHIFTL");
+        chunk_append("\tlshift");
+      }
+      else if(strcmp(op, ">>") == 0) {
+        /* Generate node of AST (BEGIN) */
+        // ASTExtr.prologue(&ASTExtr,"BITSHIFTR");
+        chunk_append("\trshift");
+      }
    }
+
+   /* Generate node of AST (END) */
+   // ASTExtr.epilogue(&ASTExtr,"BITSHIFT");
+
    return PARSE_OK;
 }
 
@@ -988,33 +1110,60 @@ int parse_bitwiseandor(buzzparser_t par) {
       char op = par->tok->value[0];
       fetchtok();
       if(!parse_bitwisenot(par)) return PARSE_ERROR;
-      if(op == '&') { chunk_append("\tband"); }
-      else if(op == '|') { chunk_append("\tbor"); }
+      if(op == '&') {
+        /* Generate node of AST (BEGIN) */
+        // ASTExtr.prologue(&ASTExtr,"BITWISEAND");
+        chunk_append("\tband");
+      }
+      else if(op == '|') {
+        /* Generate node of AST (BEGIN) */
+        // ASTExtr.prologue(&ASTExtr,"BITWISEOR");
+        chunk_append("\tbor");
+      }
       else return PARSE_ERROR;
    }
+   // /* Generate node of AST (END) */
+   // ASTExtr.epilogue(&ASTExtr,"BITSHIFT");
+
    return PARSE_OK;
 }
 
 int parse_bitwisenot(buzzparser_t par) {
    if(par->tok->type == BUZZTOK_BNOT) {
+      // /* Generate node of AST (BEGIN) */
+      // ASTExtr.prologue(&ASTExtr,"BITWISENOT");
+
       fetchtok();
       if(!parse_bitwisenot(par)) return PARSE_ERROR;
-      chunk_append("\tbnot");      
+      chunk_append("\tbnot");
+
+      // /* Generate node of AST (END) */
+      // ASTExtr.epilogue(&ASTExtr,"BITWISENOT");
+
       return PARSE_OK;
    }
    if(!parse_operand(par)) return PARSE_ERROR;
+
    return PARSE_OK;
 }
 
 int parse_operand(buzzparser_t par) {
+   // /* Generate node of AST (BEGIN) */
+   // ASTExtr.prologue(&ASTExtr,"OPERAND");
+
    if(par->tok->type == BUZZTOK_FUN) {
       chunk_append("\tpushl " LABELREF "%u", par->labels);
       if(!parse_lambda(par)) return PARSE_ERROR;
+      // /* Generate node of AST (END) */
+      // ASTExtr.epilogue(&ASTExtr,"OPERAND");
+
       return PARSE_OK;
    }
    else if(par->tok->type == BUZZTOK_NIL) {
-      chunk_append("\tpushnil");      
+      chunk_append("\tpushnil");
       fetchtok();
+      // /* Generate node of AST (END) */
+      // ASTExtr.epilogue(&ASTExtr,"OPERAND");
       return PARSE_OK;
    }
    else if(par->tok->type == BUZZTOK_CONST) {
@@ -1027,11 +1176,15 @@ int parse_operand(buzzparser_t par) {
          chunk_append("\tpushi %s", par->tok->value);
       }
       fetchtok();
+      // /* Generate node of AST (END) */
+      // ASTExtr.epilogue(&ASTExtr,"OPERAND");
       return PARSE_OK;
    }
    else if(par->tok->type == BUZZTOK_STRING) {
       chunk_append("\tpushs %u", string_add(par->strings, par->tok->value));
       fetchtok();
+      // /* Generate node of AST (END) */
+      // ASTExtr.epilogue(&ASTExtr,"OPERAND");
       return PARSE_OK;
    }
    else if(par->tok->type == BUZZTOK_PAROPEN) {
@@ -1039,6 +1192,8 @@ int parse_operand(buzzparser_t par) {
       if(!parse_condition(par)) return PARSE_ERROR;
       tokmatch(BUZZTOK_PARCLOSE);
       fetchtok();
+      // /* Generate node of AST (END) */
+      // ASTExtr.epilogue(&ASTExtr,"OPERAND");
       return PARSE_OK;
    }
    else if(par->tok->type == BUZZTOK_ADDSUB) {
@@ -1054,11 +1209,15 @@ int parse_operand(buzzparser_t par) {
             chunk_append("\tpushi %c%s", op, par->tok->value);
          }
          fetchtok();
+         // /* Generate node of AST (END) */
+         // ASTExtr.epilogue(&ASTExtr,"OPERAND");
          return PARSE_OK;
       }
       else {
          if(!parse_power(par)) return PARSE_ERROR;
          if(op == '-') chunk_append("\tunm");
+         // /* Generate node of AST (END) */
+         // ASTExtr.epilogue(&ASTExtr,"OPERAND");
          return PARSE_OK;
       }
    }
@@ -1139,6 +1298,10 @@ int parse_idlist(buzzparser_t par) {
    /* Empty list */
    if(par->tok->type == BUZZTOK_PARCLOSE)
       return PARSE_OK;
+
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"IDLIST");
+
    /* Match an id for the first argument */
    tokmatch(BUZZTOK_ID);
    /* Look for the argument symbol in the context
@@ -1163,6 +1326,8 @@ int parse_idlist(buzzparser_t par) {
       }
       fetchtok();
    }
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"IDLIST");
    return PARSE_OK;
 }
 
@@ -1194,6 +1359,10 @@ int parse_idreflist(buzzparser_t par) {
 int parse_idref(buzzparser_t par,
                 int lvalue,
                 struct idrefinfo_s* idrefinfo) {
+
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"IDREF");
+
    /* Start with an id */
    tokmatch(BUZZTOK_ID);
    /* Look it up in the symbol table */
@@ -1282,6 +1451,8 @@ int parse_idref(buzzparser_t par,
       }
    }
    chunk_buf_pop();
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"IDREF");
    return PARSE_OK;
 }
 
@@ -1289,6 +1460,9 @@ int parse_idref(buzzparser_t par,
 /****************************************/
 
 int parse_lambda(buzzparser_t par) {
+   /* Generate node of AST (BEGIN) */
+   ASTExtr.prologue(&ASTExtr,"LAMBDA");
+
    tokmatch(BUZZTOK_FUN);
    fetchtok();
    /* Make a new chunk for this function and get the associated symbol */
@@ -1321,6 +1495,10 @@ int parse_lambda(buzzparser_t par) {
    /* Get rid of symbol table and close chunk */
    symt_pop();
    chunk_pop();
+
+   /* Generate node of AST (END) */
+   ASTExtr.epilogue(&ASTExtr,"LAMBDA");
+
    return PARSE_OK;
 }
 
@@ -1418,6 +1596,11 @@ void buzzparser_destroy(buzzparser_t* par) {
 
 int buzzparser_parse(buzzparser_t par) {
    /*
+    * Initialize the ASTExtractor
+    */
+   ASTExtr = ASTExtractor_Create();
+
+   /*
     * Parse the script
     */
    if(!parse_script(par)) return PARSE_ERROR;
@@ -1437,6 +1620,11 @@ int buzzparser_parse(buzzparser_t par) {
    fprintf(par->asmstream, "\tnop\n");
    /* Write actual chunks */
    buzzdarray_foreach(par->chunks, chunk_print, par->asmstream);
+
+   /*
+    * Free the ASTExtractor object
+    */
+   ASTExtr.Free(&ASTExtr);
    return PARSE_OK;
 }
 
